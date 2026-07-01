@@ -172,6 +172,9 @@ def compare_simulation_results(projects, chipyard_dir):
     print("2. RoCC (Tightly Coupled): Directly integrated into the CPU pipeline with extremely low communication latency. Suitable for compute-intensive tasks with small data sizes.")
     print("3. DMA (Loosely Coupled): Accesses memory directly via the system bus. Has bus latency overhead but fully offloads the CPU, making it ideal for bulk data transfers.")
     print("4. RVV (Vector Extension): Performs data-level parallel computation using standard SIMD instructions. Offers low software development cost and is excellent for array and matrix processing.")
+    print("\n* Note on Data Volume: The RVV architecture test processes 256 parallel LFSR streams")
+    print("  simultaneously, whereas other architectures process a single stream. This difference")
+    print("  in computation volume is intentionally designed to showcase RVV's parallel acceleration capability.")
     print("==================================================\n")
 
 
