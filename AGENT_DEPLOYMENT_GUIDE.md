@@ -1,8 +1,8 @@
-# Autonomous Agent Deployment Guide for RISC-V SoC Architecture Project
+# Deployment Guide for RISC-V SoC Architecture Project
 
 This directory (`OpenSrc_Build_RISCV`) contains a complete set of source codes, configurations, and patches to deploy a RISC-V Chipyard SoC learning environment.
 
-As an AI Agent, if a user requests you to "deploy the RISC-V environment" or "setup the workspace", you MUST follow the exact sequence of steps below.
+To setup the workspace and deploy the RISC-V environment, follow the sequence of steps below.
 
 ## Directory Structure
 - `demos/`: Contains the software applications to run on the RISC-V processors.
@@ -12,7 +12,7 @@ As an AI Agent, if a user requests you to "deploy the RISC-V environment" or "se
 ## Deployment Steps
 
 ### Step 1: Install Dependencies
-Ensure `conda` and `git` are installed on the user's system.
+Ensure `conda` and `git` are installed on the system.
 ```bash
 sudo yum install -y git  # Or apt-get on Debian/Ubuntu
 ```
@@ -27,19 +27,18 @@ git checkout 1.14.0
 ```
 
 ### Step 3: Apply Hardware Patches
-The user has designed custom hardware modules (e.g., MAC accelerator, LFSR, DMA bridges). We must apply them to the freshly cloned Chipyard BEFORE building.
+Apply the custom hardware modules (e.g., MAC accelerator, LFSR, DMA bridges) to the freshly cloned Chipyard repository before building.
 ```bash
 # Note: Run this from the directory containing this GUIDE
 rsync -a hardware_patches/ chipyard/
 ```
 
 ### Step 4: Build Chipyard Toolchains
-Initialize Chipyard and compile the RISC-V toolchains. This will take a long time.
+Initialize Chipyard and compile the RISC-V toolchains. This process will take 30+ minutes depending on system performance.
 ```bash
 cd chipyard
 ./build-setup.sh riscv-tools -s 6 -s 7 -s 8 -s 9
 ```
-*Note for Agent: Use the background task tool (`run_command` with high `WaitMsBeforeAsync` or similar) as this takes 30+ minutes.*
 
 ### Step 5: Test and Verify
 After compilation is complete, verify the deployment using the interactive runner.
