@@ -195,7 +195,7 @@ def main():
     
     config = load_config()
     projects = config.get('projects', [])
-    chipyard_dir = config.get('global_settings', {}).get('chipyard_dir', '~/work/riscv-rtl/chipyard')
+    chipyard_dir = config.get('global_settings', {}).get('chipyard_dir', '../chipyard')
 
     if not projects:
         print_error_msg("No projects defined in projects.yaml.")

@@ -37,6 +37,29 @@ int main(void)
     printf("  LFSR Hardware Accelerator Demo\n");
     printf("========================================\n\n");
 
+
+    printf("[Golden Model] Dumping first 100 intermediate values for verification:\n");
+    uint32_t current_sw = seed;
+    for (int i = 1; i <= 100; i++) {
+        current_sw = lfsr_sw(current_sw, 1);
+        printf("%08X ", current_sw);
+        if (i % 10 == 0) printf("\n");
+    }
+    printf("\n");
+
+    printf("[HW Model] Dumping first 100 intermediate values for verification:\n");
+    uint32_t current_hw = seed;
+    for (int i = 1; i <= 100; i++) {
+        while ((reg_read8(LFSR_STATUS) & 0x2) == 0) ;
+        reg_write32(LFSR_SEED, current_hw);
+        reg_write32(LFSR_STEPS, 1);
+        while ((reg_read8(LFSR_STATUS) & 0x1) == 0) ;
+        current_hw = reg_read32(LFSR_RESULT);
+        printf("%08X ", current_hw);
+        if (i % 10 == 0) printf("\n");
+    }
+    printf("\n");
+
     // ----- Software baseline -----
     cycles_start = read_mcycle();
     sw_result = lfsr_sw(seed, steps);

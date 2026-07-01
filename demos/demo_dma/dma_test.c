@@ -33,6 +33,32 @@ int main(void) {
     printf("  TileLink Master with DMA LFSR Demo\n");
     printf("========================================\n\n");
 
+
+    printf("[Golden Model] Dumping first 100 intermediate values for verification:\n");
+    uint32_t current_sw = seed;
+    for (int i = 1; i <= 100; i++) {
+        current_sw = lfsr_sw(current_sw, 1);
+        printf("%08X ", current_sw);
+        if (i % 10 == 0) printf("\n");
+    }
+    printf("\n");
+
+    printf("[HW Model] Dumping first 100 intermediate values for verification:\n");
+    uint32_t current_hw = seed;
+    uint32_t dma_array[2] __attribute__((aligned(8)));
+    for (int i = 1; i <= 100; i++) {
+        dma_array[0] = current_hw;
+        dma_array[1] = 1;
+        while ((reg_read8(DMA_STATUS) & 0x2) == 0) ;
+        reg_write64(DMA_ADDR, (uint64_t)(uintptr_t)dma_array);
+        reg_write32(DMA_COUNT, 1);
+        while ((reg_read8(DMA_STATUS) & 0x1) == 0) ;
+        current_hw = reg_read32(DMA_RESULT);
+        printf("%08X ", current_hw);
+        if (i % 10 == 0) printf("\n");
+    }
+    printf("\n");
+
     unsigned long cycles_start = read_mcycle();
     uint32_t sw_result = lfsr_sw(seed, steps);
     unsigned long sw_cycles = read_mcycle() - cycles_start;

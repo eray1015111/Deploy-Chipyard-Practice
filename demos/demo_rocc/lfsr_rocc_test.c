@@ -30,6 +30,27 @@ int main(void) {
     printf("  RoCC (Custom Coprocessor) LFSR Demo\n");
     printf("========================================\n\n");
 
+
+    printf("[Golden Model] Dumping first 100 intermediate values for verification:\n");
+    uint32_t current_sw = seed;
+    for (int i = 1; i <= 100; i++) {
+        current_sw = lfsr_sw(current_sw, 1);
+        printf("%08X ", current_sw);
+        if (i % 10 == 0) printf("\n");
+    }
+    printf("\n");
+
+    printf("[HW Model] Dumping first 100 intermediate values for verification:\n");
+    uint32_t current_hw = seed;
+    for (int i = 1; i <= 100; i++) {
+        uint64_t hw_res_val = 0;
+        ROCC_INSTRUCTION_DSS(0, hw_res_val, current_hw, 1, 0);
+        current_hw = (uint32_t)hw_res_val;
+        printf("%08X ", current_hw);
+        if (i % 10 == 0) printf("\n");
+    }
+    printf("\n");
+
     // --- SW Speed test ---
     unsigned long cycles_start = read_mcycle();
     uint32_t sw_result = lfsr_sw(seed, steps);
