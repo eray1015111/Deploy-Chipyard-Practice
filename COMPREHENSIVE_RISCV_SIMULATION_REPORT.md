@@ -603,7 +603,3 @@ sudo apt-get install gtkwave
 gtkwave output/test.vcd
 ```
 
-**初學者的波形除錯心法**：
-1. **Top-Down 尋找模組**：在 GTKWave 左側的硬體層級樹 (SST) 中，慢慢展開 `TestDriver -> TestHarness -> chiTop -> system`，您就可以在茫茫大海中找到您設計的 Saturn 向量單元、RoCC 或 DMA 的硬體模組。
-2. **緊盯 Handshake 訊號**：重點觀察 TileLink 或 Decoupled 介面的 `valid` 與 `ready` 訊號。如果您的 `valid` 一直是 High，但硬體的 `ready` 卻是 Low，代表接收端卡住了（可能是 Buffer 滿了或是運算來不及），這通常是效能瓶頸的真兇。
-3. **定位時鐘 (Clock)**：將波形放大到能清楚看見 `clock` 的方波，RISC-V 的世界裡，所有信號與狀態機的改變都應該在 clock 的「上升沿 (Rising Edge)」發生。
