@@ -87,14 +87,14 @@
   [純軟體端 (Software Space)]                           [硬體端 (Hardware Space)]
   
   +--------------------------------+                  +-------------------------+
-  |  test.c (主程式 / 測試框架)    |                  |                         |
+  |  pure_c_test.c (主程式 / 測試框架) |                  |                         |
   |  - 初始化測試資料              |                  |                         |
   |  - 呼叫純軟體 Solver           |                  |                         |
   +--------------------------------+                  |                         |
                | (Function Call)                      |                         |
                v                                      |                         |
   +--------------------------------+                  |                         |
-  |  gpi_solver.c (純 C 演算法)    |                  |      (完全沒有使用到)   |
+  |  lfsr_sw (純 C 演算法函式)     |                  |      (完全沒有使用到)   |
   |  - 一般區段 (純 C 執行)        |                  |      (客製化硬體資源)   |
   |  - 效能瓶頸區段 (純 C 迴圈)    |                  |                         |
   |  - 運算結束回傳結果            |                  |                         |
@@ -104,15 +104,15 @@
 
 **【Pure C 核心 Code 示例】**
 ```c
-// gpi_solver.c (純軟體版本)
+// pure_c_test.c (純軟體版本)
 #include <stdint.h>
 
-uint32_t gpi_solver_pure_c(uint32_t seed, uint32_t steps) {
+uint32_t lfsr_sw(uint32_t seed, uint32_t steps) {
     // 效能瓶頸區段：大量耗時的純軟體迴圈
     uint32_t lfsr = seed;
     for (uint32_t i = 0; i < steps; i++) {
-        uint32_t bit = ((lfsr >> 0) ^ (lfsr >> 2) ^ (lfsr >> 3) ^ (lfsr >> 5)) & 1;
-        lfsr = (lfsr >> 1) | (bit << 31);
+        if (lfsr & 1) lfsr = (lfsr >> 1) ^ 0x80200003;
+        else          lfsr = (lfsr >> 1);
     }
     return lfsr;
 }
@@ -159,7 +159,7 @@ uint32_t gpi_solver_pure_c(uint32_t seed, uint32_t steps) {
                | (Function Call)                      |              | rs1, rs2 (指令傳遞)|
                v                                      |              v                    |
   +--------------------------------+                  |  +=============================+  |
-  |  gpi_solver.c (RoCC 加速版)    |                  |  | RoCC Coprocessor (硬體位置) |  |
+  |  lfsr_rocc_test.c (RoCC加速版) |                  |  | RoCC Coprocessor (硬體位置) |  |
   |  - 一般區段維持純 C 執行       |                  |  |-----------------------------|  |
   |  - 執行 ROCC_INSTRUCTION_DSS   | ==============>  |  | [內建 LFSR RTL Gate-Level]  |  |
   |    (CPU 停頓等待硬體算完)      | <=== 寫回 rd ==  |  +=============================+  |
@@ -169,10 +169,10 @@ uint32_t gpi_solver_pure_c(uint32_t seed, uint32_t steps) {
 
 **【RoCC 核心 Code 示例】**
 ```c
-// gpi_solver.c (RoCC 加速版本)
+// lfsr_rocc_test.c (RoCC 加速版本)
 #include "rocc.h"
 
-uint32_t gpi_solver_rocc(uint32_t seed, uint32_t steps) {
+uint32_t lfsr_rocc(uint32_t seed, uint32_t steps) {
     uint64_t hw_result = 0;
     // 瓶頸區段替換為硬體指令
     ROCC_INSTRUCTION_DSS(0, hw_result, seed, steps, 0);
@@ -212,15 +212,17 @@ uint32_t gpi_solver_rocc(uint32_t seed, uint32_t steps) {
 
 **軟體呼叫 (C Code)**：
 ```c
-// gpi_solver.c (RVV 陣列相加版本)
+// rvv_test.c (RVV 陣列平行運算版本)
 #include <riscv_vector.h>
 
-void gpi_solver_rvv(uint32_t* a, uint32_t* b, uint32_t* c, size_t n) {
-    size_t vl = __riscv_vsetvl_e32m1(n); 
-    vint32m1_t va = __riscv_vle32_v_i32m1(a, vl);
-    vint32m1_t vb = __riscv_vle32_v_i32m1(b, vl);
-    vint32m1_t vc = __riscv_vadd_vv_i32m1(va, vb, vl);
-    __riscv_vse32_v_i32m1(c, vc, vl);
+void lfsr_hw_array(uint32_t* seeds_in, uint32_t* res, uint32_t steps, size_t n) {
+    size_t vl;
+    for (; n > 0; n -= vl, seeds_in += vl, res += vl) {
+        vl = __riscv_vsetvl_e32m1(n); 
+        vuint32m1_t vlfsr = __riscv_vle32_v_u32m1(seeds_in, vl);
+        // ... 省略 LFSR 條件分支 Intrinsics ...
+        __riscv_vse32_v_u32m1(res, vlfsr, vl);
+    }
 }
 ```
 
@@ -239,7 +241,7 @@ void gpi_solver_rvv(uint32_t* a, uint32_t* b, uint32_t* c, size_t n) {
                | (Function Call)                      |              | 暫存器配置 (設定)  |
                v                                      |              v                    |
   +--------------------------------+                  |  +=============================+  |
-  |  gpi_solver.c (DMA 加速版)     |                  |  | DMA Accelerator (硬體位置)  |  |
+  |  dma_test.c (DMA 加速版)       |                  |  | DMA Accelerator (硬體位置)  |  |
   |  - 將記憶體位址寫入 MMIO 暫存器| ==============>  |  |-----------------------------|  |
   |  - 啟動硬體並進入 Polling 迴圈 | <==============  |  | [DMA Engine + LFSR RTL]     |  |
   |  - 偵測 STATUS 完成後跳出      |    (中斷或輪詢)  |  +=============================+  |
@@ -253,12 +255,12 @@ void gpi_solver_rvv(uint32_t* a, uint32_t* b, uint32_t* c, size_t n) {
 
 **【DMA 核心 Code 示例】**
 ```c
-// gpi_solver.c (DMA 加速版本)
+// dma_test.c (DMA 加速版本)
 #define DMA_STATUS 0x7000
 #define DMA_ADDR   0x7008
 #define DMA_COUNT  0x7010
 
-void gpi_solver_dma(uint64_t mem_array, uint32_t array_length) {
+void lfsr_dma(uint64_t mem_array, uint32_t array_length) {
     *(volatile uint64_t*)DMA_ADDR = mem_array;
     *(volatile uint32_t*)DMA_COUNT = array_length;
 
