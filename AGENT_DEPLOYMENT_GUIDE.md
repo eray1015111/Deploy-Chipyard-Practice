@@ -1,55 +1,70 @@
-# Deployment Guide for RISC-V SoC Architecture Project
+# Deployment Guide
 
-This directory (`OpenSrc_Build_RISCV`) contains a complete set of source codes, configurations, and patches to deploy a RISC-V Chipyard SoC learning environment.
+This guide describes how to set up the `OpenSrc_Build_RISCV` package with Chipyard.
 
-To setup the workspace and deploy the RISC-V environment, follow the sequence of steps below.
+## Prerequisites
 
-## Directory Structure
-- `demos/`: Contains the software applications to run on the RISC-V processors.
-- `runner/`: Contains `chipyard_runner.py`, the interactive execution script.
-- `hardware_patches/`: Contains customized Chisel/Verilog hardware designs (RoCC, DMA, RVV configurations).
+- Linux environment
+- `git`
+- `conda`
+- C/C++ build tools
+- Python 3
 
-## Deployment Steps
+On Ubuntu or Debian:
 
-### Step 1: Install Dependencies
-Ensure `conda` and `git` are installed on the system.
 ```bash
-sudo yum install -y git  # Or apt-get on Debian/Ubuntu
+sudo apt-get update
+sudo apt-get install -y git make gcc g++ python3 python3-pip rsync
 ```
 
-### Step 2: Clone Chipyard
-Clone Chipyard inside this directory (`OpenSrc_Build_RISCV`) and checkout version `1.14.0`.
+## Step 1: Clone Chipyard
+
+Run from the `OpenSrc_Build_RISCV` directory:
+
 ```bash
-# Note: Navigate to the directory containing this GUIDE before proceeding
 git clone https://github.com/ucb-bar/chipyard.git
 cd chipyard
 git checkout 1.14.0
+cd ..
 ```
 
-### Step 3: Apply Hardware Patches
-Apply the custom hardware modules (e.g., MAC accelerator, LFSR, DMA bridges) to the freshly cloned Chipyard repository before building.
+## Step 2: Apply Hardware Patches
+
+Copy the provided Chipyard patches into the cloned Chipyard tree:
+
 ```bash
-# Note: Run this from the directory containing this GUIDE
 rsync -a hardware_patches/ chipyard/
 ```
 
-### Step 4: Build Chipyard Toolchains
-Initialize Chipyard and compile the RISC-V toolchains. This process will take 30+ minutes depending on system performance.
+The patches add these demonstration configurations:
+
+- `LFSRDemoRocketConfig`
+- `RoCCDemoRocketConfig`
+- `RVVDemoRocketConfig`
+- `DMADemoRocketConfig`
+
+## Step 3: Build the Toolchain
+
 ```bash
 cd chipyard
 ./build-setup.sh riscv-tools -s 6 -s 7 -s 8 -s 9
+source env.sh
 ```
 
-### Step 5: Test and Verify
-After compilation is complete, verify the deployment using the interactive runner.
+This step may take a long time because it builds the RISC-V toolchain and simulator dependencies.
+
+## Step 4: Run a Demo
+
 ```bash
 cd ../runner
-source ../chipyard/env.sh
-# Check if python dependencies are met
 pip install inquirer pyyaml
 python chipyard_runner.py
 ```
 
-### Script Execution Rules
-- The `chipyard_runner.py` uses **relative paths** (`../chipyard` and `../demos/...`) defined in `projects.yaml`.
-- It dynamically resolves paths, meaning as long as `chipyard` and `demos` are adjacent to `runner`, it will work in any environment or directory structure.
+Select one of the listed implementations. The runner compiles the C program first, then runs the corresponding Verilator simulation.
+
+## Notes
+
+- The runner assumes `chipyard/`, `demos/`, and `runner/` remain next to each other under `OpenSrc_Build_RISCV`.
+- The demos compare each accelerator against the same C golden model.
+- If a simulation fails, check the generated compile command and the Chipyard Verilator log first.

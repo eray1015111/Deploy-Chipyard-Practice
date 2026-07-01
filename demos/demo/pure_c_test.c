@@ -1,60 +1,55 @@
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 
-static inline unsigned long read_mcycle(void) {
+#define LFSR_POLY 0x80200003U
+
+static inline unsigned long read_mcycle(void)
+{
     unsigned long value;
-    asm volatile ("csrr %0, mcycle" : "=r"(value));
+    asm volatile("csrr %0, mcycle" : "=r"(value));
     return value;
 }
 
-unsigned int lfsr_sw(unsigned int seed, unsigned int steps) {
-    unsigned int lfsr = seed;
-    for (unsigned int i = 0; i < steps; i++) {
-        if (lfsr & 1) {
-            lfsr = (lfsr >> 1) ^ 0x80200003;
-        } else {
-            lfsr = (lfsr >> 1);
-        }
+static uint32_t lfsr_step(uint32_t state)
+{
+    return (state & 1U) ? ((state >> 1) ^ LFSR_POLY) : (state >> 1);
+}
+
+uint32_t lfsr_sw(uint32_t seed, uint32_t steps)
+{
+    uint32_t lfsr = seed;
+
+    for (uint32_t i = 0; i < steps; i++) {
+        lfsr = lfsr_step(lfsr);
     }
+
     return lfsr;
 }
 
 int main(void)
 {
-    uint32_t seed = 0x12345678;
-    uint32_t steps = 10000;
-    
-    uint32_t sw_result;
-    unsigned long cycles_start, cycles_end;
-    unsigned long sw_cycles;
+    const uint32_t seed = 0x12345678U;
+    const uint32_t steps = 10000U;
 
-    printf("========================================\n");
-    printf("  LFSR Pure Software Demo (Golden Model)\n");
-    printf("========================================\n\n");
+    printf("Pure C LFSR baseline\n");
+    printf("Seed: 0x%08X, steps: %u\n", seed, steps);
 
-    // ----- Correctness Dump (First 100 steps) -----
-    printf("[Golden Model] Dumping first 100 intermediate values for verification:\n");
-    uint32_t current_val = seed;
+    printf("[Golden Model] First 100 one-step states:\n");
+    uint32_t current = seed;
     for (int i = 1; i <= 100; i++) {
-        current_val = lfsr_sw(current_val, 1);
-        printf("%08X ", current_val);
-        if (i % 10 == 0) printf("\n");
+        current = lfsr_sw(current, 1);
+        printf("%08X ", current);
+        if ((i % 10) == 0) {
+            printf("\n");
+        }
     }
-    printf("\n");
 
-    // ----- Software baseline (Performance Test) -----
-    printf("Running Performance Test (steps=%u)...\n", steps);
-    cycles_start = read_mcycle();
-    sw_result = lfsr_sw(seed, steps);
-    cycles_end = read_mcycle();
-    sw_cycles = cycles_end - cycles_start;
-    
-    printf("[SW] lfsr_sw(seed=0x%X, steps=%u) = 0x%X\n", seed, steps, sw_result);
-    printf("     Cycles consumed: %lu\n\n", sw_cycles);
+    unsigned long start = read_mcycle();
+    uint32_t result = lfsr_sw(seed, steps);
+    unsigned long cycles = read_mcycle() - start;
 
-    printf("SUCCESS! Pure Software simulation completed.\n");
-    printf("========================================\n");
-    
-    for (volatile int i = 0; i < 10000; i++);
+    printf("\n[SW] lfsr_sw(seed=0x%08X, steps=%u) = 0x%08X\n",
+           seed, steps, result);
+    printf("[SW] cycles=%lu\n", cycles);
     return 0;
 }

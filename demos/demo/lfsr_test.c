@@ -1,99 +1,97 @@
-#include "mmio.h"
+#include <stdint.h>
 #include <stdio.h>
 
-#define LFSR_STATUS 0x6000
-#define LFSR_SEED   0x6004
-#define LFSR_STEPS  0x6008
-#define LFSR_RESULT 0x600C
+#include "mmio.h"
 
-static inline unsigned long read_mcycle(void) {
+#define LFSR_STATUS 0x6000U
+#define LFSR_SEED   0x6004U
+#define LFSR_STEPS  0x6008U
+#define LFSR_RESULT 0x600CU
+#define LFSR_POLY   0x80200003U
+
+static inline unsigned long read_mcycle(void)
+{
     unsigned long value;
-    asm volatile ("csrr %0, mcycle" : "=r"(value));
+    asm volatile("csrr %0, mcycle" : "=r"(value));
     return value;
 }
 
-unsigned int lfsr_sw(unsigned int seed, unsigned int steps) {
-    unsigned int lfsr = seed;
-    for (unsigned int i = 0; i < steps; i++) {
-        if (lfsr & 1) {
-            lfsr = (lfsr >> 1) ^ 0x80200003;
-        } else {
-            lfsr = (lfsr >> 1);
-        }
+static uint32_t lfsr_step(uint32_t state)
+{
+    return (state & 1U) ? ((state >> 1) ^ LFSR_POLY) : (state >> 1);
+}
+
+uint32_t lfsr_sw(uint32_t seed, uint32_t steps)
+{
+    uint32_t lfsr = seed;
+
+    for (uint32_t i = 0; i < steps; i++) {
+        lfsr = lfsr_step(lfsr);
     }
+
     return lfsr;
+}
+
+static uint32_t lfsr_hw(uint32_t seed, uint32_t steps)
+{
+    while ((reg_read8(LFSR_STATUS) & 0x2U) == 0U) {
+    }
+
+    reg_write32(LFSR_SEED, seed);
+    reg_write32(LFSR_STEPS, steps);
+
+    while ((reg_read8(LFSR_STATUS) & 0x1U) == 0U) {
+    }
+
+    return reg_read32(LFSR_RESULT);
 }
 
 int main(void)
 {
-    uint32_t seed = 0x12345678;
-    uint32_t steps = 10000;
-    
-    uint32_t sw_result, hw_result;
-    unsigned long cycles_start, cycles_end;
-    unsigned long sw_cycles, hw_cycles;
+    const uint32_t seed = 0x12345678U;
+    const uint32_t steps = 10000U;
 
-    printf("========================================\n");
-    printf("  LFSR Hardware Accelerator Demo\n");
-    printf("========================================\n\n");
+    printf("LFSR MMIO accelerator demo\n");
+    printf("Seed: 0x%08X, steps: %u\n", seed, steps);
 
-
-    printf("[Golden Model] Dumping first 100 intermediate values for verification:\n");
+    printf("[Golden Model] First 100 one-step states:\n");
     uint32_t current_sw = seed;
     for (int i = 1; i <= 100; i++) {
         current_sw = lfsr_sw(current_sw, 1);
         printf("%08X ", current_sw);
-        if (i % 10 == 0) printf("\n");
+        if ((i % 10) == 0) {
+            printf("\n");
+        }
     }
-    printf("\n");
 
-    printf("[HW Model] Dumping first 100 intermediate values for verification:\n");
+    printf("\n[Hardware] First 100 one-step states:\n");
     uint32_t current_hw = seed;
     for (int i = 1; i <= 100; i++) {
-        while ((reg_read8(LFSR_STATUS) & 0x2) == 0) ;
-        reg_write32(LFSR_SEED, current_hw);
-        reg_write32(LFSR_STEPS, 1);
-        while ((reg_read8(LFSR_STATUS) & 0x1) == 0) ;
-        current_hw = reg_read32(LFSR_RESULT);
+        current_hw = lfsr_hw(current_hw, 1);
         printf("%08X ", current_hw);
-        if (i % 10 == 0) printf("\n");
+        if ((i % 10) == 0) {
+            printf("\n");
+        }
     }
-    printf("\n");
 
-    // ----- Software baseline -----
-    cycles_start = read_mcycle();
-    sw_result = lfsr_sw(seed, steps);
-    cycles_end = read_mcycle();
-    sw_cycles = cycles_end - cycles_start;
-    
-    printf("[SW] lfsr_sw(seed=0x%X, steps=%u) = 0x%X\n", seed, steps, sw_result);
-    printf("     Cycles consumed: %lu\n\n", sw_cycles);
+    unsigned long start = read_mcycle();
+    uint32_t sw_result = lfsr_sw(seed, steps);
+    unsigned long sw_cycles = read_mcycle() - start;
 
-    // ----- Hardware accelerator test -----
-    // wait for peripheral to be ready
-    while ((reg_read8(LFSR_STATUS) & 0x2) == 0) ;
+    start = read_mcycle();
+    uint32_t hw_result = lfsr_hw(seed, steps);
+    unsigned long hw_cycles = read_mcycle() - start;
 
-    cycles_start = read_mcycle();
-    reg_write32(LFSR_SEED, seed);
-    reg_write32(LFSR_STEPS, steps); // triggers computation
+    printf("\n[SW] lfsr_sw(seed=0x%08X, steps=%u) = 0x%08X, cycles=%lu\n",
+           seed, steps, sw_result, sw_cycles);
+    printf("[HW] lfsr_hw(seed=0x%08X, steps=%u) = 0x%08X, cycles=%lu\n",
+           seed, steps, hw_result, hw_cycles);
 
-    // wait for result to be valid
-    while ((reg_read8(LFSR_STATUS) & 0x1) == 0) ;
-
-    hw_result = reg_read32(LFSR_RESULT);
-    cycles_end = read_mcycle();
-    hw_cycles = cycles_end - cycles_start;
-
-    printf("[HW] lfsr_hw(seed=0x%X, steps=%u) = 0x%X\n", seed, steps, hw_result);
-    printf("     Cycles consumed: %lu  (includes MMIO overhead)\n\n", hw_cycles);
-
-    if (sw_result != hw_result) {
-        printf("FAIL: Results do not match!\n");
-        return 1;
+    if (sw_result == hw_result) {
+        printf("PASS: hardware result matches the software golden model.\n");
+        return 0;
     }
-    
-    printf("SUCCESS! Results match perfectly.\n");
-    printf("Hardware Speedup: %lu / %lu = %.2f X\n", sw_cycles, hw_cycles, (float)sw_cycles / (float)hw_cycles);
-    printf("========================================\n");
-    return 0;
+
+    printf("FAIL: hardware result does not match the software golden model.\n");
+    return 1;
 }

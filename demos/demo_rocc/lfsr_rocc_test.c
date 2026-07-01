@@ -1,78 +1,84 @@
-#include "rocc.h"
 #include <stdint.h>
 #include <stdio.h>
 
-static inline unsigned long read_mcycle(void) {
+#include "rocc.h"
+
+#define LFSR_POLY 0x80200003U
+
+static inline unsigned long read_mcycle(void)
+{
     unsigned long value;
-    asm volatile ("csrr %0, mcycle" : "=r"(value));
+    asm volatile("csrr %0, mcycle" : "=r"(value));
     return value;
 }
 
-unsigned int lfsr_sw(unsigned int seed, unsigned int steps) {
-    unsigned int lfsr = seed;
-    for (unsigned int i = 0; i < steps; i++) {
-        if (lfsr & 1) lfsr = (lfsr >> 1) ^ 0x80200003;
-        else          lfsr = (lfsr >> 1);
+static uint32_t lfsr_step(uint32_t state)
+{
+    return (state & 1U) ? ((state >> 1) ^ LFSR_POLY) : (state >> 1);
+}
+
+uint32_t lfsr_sw(uint32_t seed, uint32_t steps)
+{
+    uint32_t lfsr = seed;
+
+    for (uint32_t i = 0; i < steps; i++) {
+        lfsr = lfsr_step(lfsr);
     }
+
     return lfsr;
 }
 
-int main(void) {
-    uint32_t seed = 0x12345678, steps = 10000;
-    
-    // Enable RoCC in mstatus (set XS bits 15:16 to 3)
-    unsigned long mstatus;
-    asm volatile ("csrr %0, mstatus" : "=r"(mstatus));
-    mstatus |= (3 << 15);
-    asm volatile ("csrw mstatus, %0" : : "r"(mstatus));
+static uint32_t lfsr_rocc(uint32_t seed, uint32_t steps)
+{
+    uint64_t result;
+    ROCC_INSTRUCTION_DSS(0, result, seed, steps, 0);
+    return (uint32_t)result;
+}
 
-    printf("========================================\n");
-    printf("  RoCC (Custom Coprocessor) LFSR Demo\n");
-    printf("========================================\n\n");
+int main(void)
+{
+    const uint32_t seed = 0x12345678U;
+    const uint32_t steps = 10000U;
 
+    printf("RoCC LFSR accelerator demo\n");
+    printf("Seed: 0x%08X, steps: %u\n", seed, steps);
 
-    printf("[Golden Model] Dumping first 100 intermediate values for verification:\n");
+    printf("[Golden Model] First 100 one-step states:\n");
     uint32_t current_sw = seed;
     for (int i = 1; i <= 100; i++) {
         current_sw = lfsr_sw(current_sw, 1);
         printf("%08X ", current_sw);
-        if (i % 10 == 0) printf("\n");
+        if ((i % 10) == 0) {
+            printf("\n");
+        }
     }
-    printf("\n");
 
-    printf("[HW Model] Dumping first 100 intermediate values for verification:\n");
+    printf("\n[RoCC] First 100 one-step states:\n");
     uint32_t current_hw = seed;
     for (int i = 1; i <= 100; i++) {
-        uint64_t hw_res_val = 0;
-        ROCC_INSTRUCTION_DSS(0, hw_res_val, current_hw, 1, 0);
-        current_hw = (uint32_t)hw_res_val;
+        current_hw = lfsr_rocc(current_hw, 1);
         printf("%08X ", current_hw);
-        if (i % 10 == 0) printf("\n");
+        if ((i % 10) == 0) {
+            printf("\n");
+        }
     }
-    printf("\n");
 
-    // --- SW Speed test ---
-    unsigned long cycles_start = read_mcycle();
+    unsigned long start = read_mcycle();
     uint32_t sw_result = lfsr_sw(seed, steps);
-    unsigned long sw_cycles = read_mcycle() - cycles_start;
-    
-    printf("[SW] lfsr_sw: 0x%X (cycles=%lu)\n", sw_result, sw_cycles);
+    unsigned long sw_cycles = read_mcycle() - start;
 
-    // --- HW (RoCC) Speed test ---
-    cycles_start = read_mcycle();
-    
-    uint64_t hw_result = 0;
-    ROCC_INSTRUCTION_DSS(0, hw_result, seed, steps, 0);
+    start = read_mcycle();
+    uint32_t hw_result = lfsr_rocc(seed, steps);
+    unsigned long hw_cycles = read_mcycle() - start;
 
-    unsigned long hw_cycles = read_mcycle() - cycles_start;
-    
-    printf("[HW] lfsr_rocc: 0x%X (cycles=%lu)\n", (uint32_t)hw_result, hw_cycles);
+    printf("\n[SW] lfsr_sw:    0x%08X, cycles=%lu\n", sw_result, sw_cycles);
+    printf("[RoCC] lfsr_rocc: 0x%08X, cycles=%lu\n", hw_result, hw_cycles);
 
     if (sw_result == hw_result) {
-        printf("\nSUCCESS! Results match perfectly.\n");
-    } else {
-        printf("\nFAIL! Results mismatch.\n");
+        printf("PASS: RoCC result matches the software golden model.\n");
+        return 0;
     }
 
-    return 0;
+    printf("FAIL: RoCC result does not match the software golden model.\n");
+    return 1;
 }
