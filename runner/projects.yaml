@@ -1,0 +1,48 @@
+# Chipyard Test Runner - Configuration File (Portable Version)
+
+# Global settings
+global_settings:
+  # Chipyard directory relative to this runner script
+  chipyard_dir: "../chipyard"
+
+projects:
+  - name: "[Baseline] Pure Software Execution (Pure C Golden Model)"
+    description: "No hardware acceleration, establishes baseline Cycle Count"
+    knowledge_base: "[Architecture Note] All algorithms are executed in pure software within the CPU. The goal of this stage is to establish correctness (Golden Model) and identify performance bottlenecks. Pure software LFSR computation takes approximately 80,043 Cycles."
+    makefile_dir: "../demos/demo"
+    compile_cmd: "riscv64-unknown-elf-gcc -O2 -march=rv64gc -mabi=lp64d -mcmodel=medany -fno-common -fno-builtin-printf -specs=htif_nano.specs -T htif.ld -I. -static -o pure_c_test.riscv pure_c_test.c"
+    binary_name: "pure_c_test.riscv"
+    hw_config: "RocketConfig"
+
+  - name: "[Architecture A] RoCC Custom Coprocessor"
+    description: "Tightly coupled architecture, performance improves by ~7.93x"
+    knowledge_base: "[Architecture Note] RoCC is a tightly coupled hardware acceleration architecture directly integrated next to the CPU execution pipeline. Its advantage is extremely low latency (no bus latency), suitable for tasks with frequent computations, small data volume, but high computational complexity (e.g., cryptography, specialized math)."
+    makefile_dir: "../demos/demo_rocc"
+    compile_cmd: "riscv64-unknown-elf-gcc -O2 -march=rv64gc -mabi=lp64d -mcmodel=medany -fno-common -fno-builtin-printf -specs=htif_nano.specs -T htif.ld -I. -static -o lfsr_rocc_test.riscv lfsr_rocc_test.c"
+    binary_name: "lfsr_rocc_test.riscv"
+    hw_config: "RoCCDemoRocketConfig"
+
+  - name: "[Architecture B] RVV Vector Extension"
+    description: "Standard SIMD architecture, performance improves by ~16.0x"
+    knowledge_base: "[Architecture Note] RVV is the official standard vector instruction set extension. As long as the SoC is configured with a Vector Unit, parallel computing (SIMD) can be performed via C language Vector Intrinsics. Its advantage is low development cost, suitable for large-scale array parallel operations."
+    makefile_dir: "../demos/demo_rvv"
+    compile_cmd: "riscv64-unknown-elf-gcc -O2 -march=rv64gcv -mabi=lp64d -mcmodel=medany -fno-common -fno-builtin-printf -specs=htif_nano.specs -T htif.ld -I. -static -o rvv_test.riscv rvv_test.c"
+    binary_name: "rvv_test.riscv"
+    hw_config: "RVVDemoRocketConfig"
+
+  - name: "[Architecture C] TileLink MMIO with DMA"
+    description: "Loosely coupled architecture, performance improves by ~7.80x"
+    knowledge_base: "[Architecture Note] Hardware acts as an independent node on the bus. After the CPU writes the address to the MMIO register to start the hardware, the hardware actively moves data from Memory via DMA. Its advantage is completely offloading the CPU, suitable for large-scale data flow movement and background computation."
+    makefile_dir: "../demos/demo_dma"
+    compile_cmd: "riscv64-unknown-elf-gcc -O2 -march=rv64gc -mabi=lp64d -mcmodel=medany -fno-common -fno-builtin-printf -specs=htif_nano.specs -T htif.ld -I. -static -o dma_test.riscv dma_test.c"
+    binary_name: "dma_test.riscv"
+    hw_config: "DMADemoRocketConfig"
+
+  - name: "[Advanced Debug] Generate Hardware Waveform (Waveform Debug)"
+    description: "Generate VCD waveform file for viewing in GTKWave, slower speed"
+    knowledge_base: "[Architecture Note] Recompiling the simulator with the debug parameter will record the electronic signal transitions of every Clock Cycle (VCD file). Suitable for finding Handshake (valid/ready) deadlock issues on TileLink or Decoupled interfaces."
+    makefile_dir: "../demos/demo"
+    compile_cmd: "riscv64-unknown-elf-gcc -O2 -march=rv64gc -mabi=lp64d -mcmodel=medany -fno-common -fno-builtin-printf -specs=htif_nano.specs -T htif.ld -I. -static -o pure_c_test.riscv pure_c_test.c"
+    binary_name: "pure_c_test.riscv"
+    hw_config: "RocketConfig"
+    is_debug: true
